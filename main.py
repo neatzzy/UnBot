@@ -7,13 +7,14 @@ Configuração necessária:
 #import asyncio
 import json
 import os
+
 #import re
 from pathlib import Path
-from dotenv import load_dotenv
 
 import aiohttp
 import discord
 from discord.ext import commands, tasks
+from dotenv import load_dotenv
 
 # ------------------------------------------------------------------
 # CONFIGURAÇÃO

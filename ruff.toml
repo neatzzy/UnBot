@@ -1,0 +1,6 @@
+exclude = ["venv"]
+line-length = 100
+target-version = "py311"
+
+[lint]
+ignore = ["BLE001"]  # broad exception catch is intentional in network fetch functions
