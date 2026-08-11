@@ -12,11 +12,11 @@ import unicodedata
 from pathlib import Path
 
 import aiohttp
-from jobspy import scrape_jobs
 import discord
 from aiohttp import web
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
+from jobspy import scrape_jobs
 
 # ------------------------------------------------------------------
 # CONFIGURAÇÃO
@@ -83,7 +83,7 @@ GUPY_CAREER_PAGE_URL = "https://{slug}.gupy.io/"
 # pública (portal.api.gupy.io/api/v1/jobs) foi descontinuada e hoje responde
 # 404 para qualquer request, por isso extraímos os dados direto do HTML.
 NEXT_DATA_RE = re.compile(
-    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.DOTALL
 )
 
 SEEN_JOBS_FILE = Path("seen_jobs.json")
@@ -221,13 +221,13 @@ def fetch_jobboard_jobs() -> list[dict]:
     em Brasília + remoto no resto do Brasil, só das últimas
     JOBBOARD_HOURS_OLD horas. Função síncrona (jobspy é bloqueante) — quem
     chama deve rodar em thread separada."""
-    common_kwargs = dict(
-        site_name=JOBBOARD_SITES,
-        search_term=JOBBOARD_SEARCH_TERM,
-        country_indeed="brazil",
-        hours_old=JOBBOARD_HOURS_OLD,
-        results_wanted=JOBBOARD_RESULTS_WANTED,
-    )
+    common_kwargs = {
+        "site_name": JOBBOARD_SITES,
+        "search_term": JOBBOARD_SEARCH_TERM,
+        "country_indeed": "brazil",
+        "hours_old": JOBBOARD_HOURS_OLD,
+        "results_wanted": JOBBOARD_RESULTS_WANTED,
+    }
     rows = []
     try:
         df = scrape_jobs(location=BRASILIA_LOCATION, is_remote=False, **common_kwargs)
