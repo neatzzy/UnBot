@@ -7,8 +7,7 @@ Configuração necessária:
 import asyncio
 import json
 import os
-
-#import re
+import re
 from pathlib import Path
 
 import aiohttp
@@ -38,26 +37,37 @@ KEYWORDS = [
     "jr"
 ]
 
+# Palavras-chave que definem "área de tecnologia" (checadas no título e no
+# departamento da vaga, já que o campo "department" da Gupy não segue um
+# padrão único entre empresas).
+TECH_KEYWORDS = [
+    "tecnologia", "tecnologia da informação", "t.i.", " ti ",
+    "desenvolvedor", "desenvolvimento de software", "desenvolvimento de sistemas",
+    "engenheiro de software", "engenharia de software", "programador", "programação",
+    "software", "sistemas", "dados", "data", "devops", "sre",
+    "segurança da informação", "cibersegurança", "cyber", "cloud",
+    "infraestrutura de ti", "suporte técnico", "helpdesk", "help desk",
+    "banco de dados", "qa", "quality assurance", "full stack", "fullstack",
+    "backend", "frontend", "front-end", "back-end", "mobile developer",
+    "redes de computadores", "scrum", "product design", "ux", "ui designer",
+]
+
 # Slugs de empresas no Gupy. O slug é o nome que aparece na URL da página de
 # carreiras: https://<slug>.gupy.io  ou  https://portal.gupy.io/empresas/<slug>
 # Descubra o slug de uma empresa acessando a página de vagas dela e olhando a URL.
-GUPY_COMPANY_SLUGS = [
-    "nubank",
-    "ifood",
-    "magazineluiza",
-    "stone-pagamentos",
-    "vtex",
-    "creditas",
-    "quintoandar",
-    "loft",
-    "gympass",
-    "hotmart",
-    "stefanini",
-    "asaas",
-    "vemsergrupoolx",
-]
+def load_slugs(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return[line.strip() for line in f if line.strip()]
 
-GUPY_API_URL = "https://portal.api.gupy.io/api/v1/jobs?jobName=&offset=0&limit=100&companyName={slug}"
+GUPY_CAREER_PAGE_URL = "https://{slug}.gupy.io/"
+
+# A Gupy renderiza a página de carreiras em Next.js e embute a lista de
+# vagas como JSON dentro de <script id="__NEXT_DATA__">. A antiga API REST
+# pública (portal.api.gupy.io/api/v1/jobs) foi descontinuada e hoje responde
+# 404 para qualquer request, por isso extraímos os dados direto do HTML.
+NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S
+)
 
 SEEN_JOBS_FILE = Path("seen_jobs.json")
 
@@ -84,15 +94,29 @@ def matches_keywords(title: str) -> bool:
     return any(kw in title_lower for kw in KEYWORDS)
 
 
+def is_tech_job(title: str, department: str) -> bool:
+    text = f" {title.lower()} {department.lower()} "
+    return any(kw in text for kw in TECH_KEYWORDS)
+
+
+def parse_jobs_from_html(html: str) -> list[dict]:
+    """Extrai a lista de vagas embutida no JSON da página Next.js da Gupy."""
+    match = NEXT_DATA_RE.search(html)
+    if not match:
+        return []
+    data = json.loads(match.group(1))
+    return data.get("props", {}).get("pageProps", {}).get("jobs", [])
+
+
 async def fetch_gupy_jobs(session: aiohttp.ClientSession, slug: str) -> list[dict]:
     """Busca vagas públicas de uma empresa no Gupy."""
-    url = GUPY_API_URL.format(slug=slug)
+    url = GUPY_CAREER_PAGE_URL.format(slug=slug)
     try:
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
             if resp.status != 200:
                 return []
-            data = await resp.json()
-            return data.get("data", [])
+            html = await resp.text()
+            return parse_jobs_from_html(html)
     except Exception as e:
         print(f"[erro] falha ao buscar vagas de '{slug}': {e}")
         return []
@@ -101,22 +125,27 @@ async def fetch_gupy_jobs(session: aiohttp.ClientSession, slug: str) -> list[dic
 async def collect_new_jobs(seen: set) -> list[dict]:
     """Percorre todas as empresas configuradas e retorna vagas novas que batem com as keywords."""
     new_jobs = []
+    GUPY_COMPANY_SLUGS = load_slugs('slugs_empresas.txt')
     async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
         for slug in GUPY_COMPANY_SLUGS:
             jobs = await fetch_gupy_jobs(session, slug)
             for job in jobs:
                 job_id = str(job.get("id"))
-                title = job.get("name", "")
+                title = job.get("title", "")
+                department = job.get("department", "")
                 if job_id in seen:
                     continue
                 if not matches_keywords(title):
                     continue
+                if not is_tech_job(title, department):
+                    continue
+                address = (job.get("workplace") or {}).get("address") or {}
                 new_jobs.append({
                     "id": job_id,
                     "company": slug,
                     "title": title,
-                    "url": job.get("careerPageUrl") or job.get("jobUrl") or "",
-                    "city": (job.get("city") or "Não informado"),
+                    "url": f"https://{slug}.gupy.io/job/{job_id}",
+                    "city": (address.get("city") or "Não informado"),
                     "type": (job.get("type") or ""),
                 })
                 seen.add(job_id)
