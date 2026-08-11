@@ -35,6 +35,7 @@ PORT = int(os.getenv("PORT", "8080"))
 KEYWORDS = [
     "estágio", "estagio", "estagiário", "estagiario",
     "júnior", "junior", "trainee", "jovem aprendiz",
+    "jr"
 ]
 
 # Slugs de empresas no Gupy. O slug é o nome que aparece na URL da página de
@@ -51,7 +52,9 @@ GUPY_COMPANY_SLUGS = [
     "loft",
     "gympass",
     "hotmart",
-    
+    "stefanini",
+    "asaas",
+    "vemsergrupoolx",
 ]
 
 GUPY_API_URL = "https://portal.api.gupy.io/api/v1/jobs?jobName=&offset=0&limit=100&companyName={slug}"
