@@ -167,7 +167,11 @@ async def collect_new_jobs(seen: set) -> list[dict]:
                 })
                 seen.add(job_id)
 
-    jobboard_entries = await asyncio.to_thread(fetch_jobboard_jobs)
+    try:
+        jobboard_entries = await asyncio.to_thread(fetch_jobboard_jobs)
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas em LinkedIn/Indeed/Glassdoor: {e}")
+        jobboard_entries = []
     for entry in jobboard_entries:
         if entry["id"] in seen:
             continue
@@ -253,6 +257,7 @@ async def start_web_server() -> None:
 intents = discord.Intents.default()
 intents.message_content = True  # necessário para o bot ler o prefixo "!" nas mensagens
 bot = commands.Bot(command_prefix="!", intents=intents)
+job_check_lock = asyncio.Lock()
 
 
 @bot.event
@@ -269,47 +274,56 @@ async def check_jobs_loop():
         print("[erro] CHANNEL_ID inválido ou bot sem acesso ao canal.")
         return
 
-    seen = load_seen_jobs()
-    new_jobs = await collect_new_jobs(seen)
-    save_seen_jobs(seen)
+    async with job_check_lock:
+        seen = load_seen_jobs()
+        new_jobs = await collect_new_jobs(seen)
+        save_seen_jobs(seen)
 
-    for job in new_jobs:
-        icon = PLATFORM_ICONS.get(job["source"], "")
-        embed = discord.Embed(
-            title=f"{icon} {job['title']}".strip(),
-            url=job["url"] or discord.Embed.Empty,
-            description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
-            color=0x2ECC71,
-        )
-        await channel.send(embed=embed)
+        for job in new_jobs:
+            icon = PLATFORM_ICONS.get(job["source"], "")
+            embed = discord.Embed(
+                title=f"{icon} {job['title']}".strip()[:256],
+                url=job["url"] or None,
+                description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
+                color=0x2ECC71,
+            )
+            try:
+                await channel.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"[erro] falha ao postar vaga '{job['title']}': {e}")
 
-    if new_jobs:
-        print(f"[ok] {len(new_jobs)} vaga(s) nova(s) postada(s).")
-    else:
-        print("[ok] nenhuma vaga nova nesta checagem.")
+        if new_jobs:
+            print(f"[ok] {len(new_jobs)} vaga(s) nova(s) postada(s).")
+        else:
+            print("[ok] nenhuma vaga nova nesta checagem.")
 
 
+@commands.cooldown(1, 300, commands.BucketType.guild)
 @bot.command(name="checarvagas")
 async def checar_vagas_cmd(ctx):
     """Comando manual: !checarvagas — força uma checagem imediata."""
     await ctx.send("Checando vagas agora...")
-    seen = load_seen_jobs()
-    new_jobs = await collect_new_jobs(seen)
-    save_seen_jobs(seen)
+    async with job_check_lock:
+        seen = load_seen_jobs()
+        new_jobs = await collect_new_jobs(seen)
+        save_seen_jobs(seen)
 
-    if not new_jobs:
-        await ctx.send("Nenhuma vaga nova encontrada.")
-        return
+        if not new_jobs:
+            await ctx.send("Nenhuma vaga nova encontrada.")
+            return
 
-    for job in new_jobs:
-        icon = PLATFORM_ICONS.get(job["source"], "")
-        embed = discord.Embed(
-            title=f"{icon} {job['title']}".strip(),
-            url=job["url"] or discord.Embed.Empty,
-            description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
-            color=0x2ECC71,
-        )
-        await ctx.send(embed=embed)
+        for job in new_jobs:
+            icon = PLATFORM_ICONS.get(job["source"], "")
+            embed = discord.Embed(
+                title=f"{icon} {job['title']}".strip()[:256],
+                url=job["url"] or None,
+                description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
+                color=0x2ECC71,
+            )
+            try:
+                await ctx.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"[erro] falha ao postar vaga '{job['title']}': {e}")
 
 
 async def main() -> None:
