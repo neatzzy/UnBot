@@ -163,8 +163,17 @@ async def collect_new_jobs(seen: set) -> list[dict]:
                     "url": f"https://{slug}.gupy.io/job/{job_id}",
                     "city": (address.get("city") or "Não informado"),
                     "type": (job.get("type") or ""),
+                    "source": "gupy",
                 })
                 seen.add(job_id)
+
+    jobboard_entries = await asyncio.to_thread(fetch_jobboard_jobs)
+    for entry in jobboard_entries:
+        if entry["id"] in seen:
+            continue
+        new_jobs.append(entry)
+        seen.add(entry["id"])
+
     return new_jobs
 
 
