@@ -33,4 +33,3 @@ typing_extensions==4.16.0
 tzdata==2026.3
 urllib3==2.7.0
 yarl==1.24.5
-python-jobspy==1.1.82
