@@ -144,6 +144,7 @@ async def start_web_server() -> None:
 # ------------------------------------------------------------------
 
 intents = discord.Intents.default()
+intents.message_content = True  # necessário para o bot ler o prefixo "!" nas mensagens
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
