@@ -4,7 +4,7 @@ Configuração necessária:
     DISCORD_CHANNEL_ID -> ID do canal onde as vagas serão postadas
 """
 
-#import asyncio
+import asyncio
 import json
 import os
 
@@ -13,6 +13,7 @@ from pathlib import Path
 
 import aiohttp
 import discord
+from aiohttp import web
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
@@ -25,6 +26,10 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "COLOQUE_SEU_TOKEN_AQUI")
 CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "0"))  # ID do canal do Discord
 CHECK_INTERVAL_MINUTES = 30
+
+# Porta HTTP exigida pelo Render (Web Service) para o health check.
+# O Render injeta a variável PORT automaticamente; 8080 é usado como fallback local.
+PORT = int(os.getenv("PORT", "8080"))
 
 # Palavras-chave que definem "estágio/júnior"
 KEYWORDS = [
@@ -116,6 +121,25 @@ async def collect_new_jobs(seen: set) -> list[dict]:
 
 
 # ------------------------------------------------------------------
+# SERVIDOR HTTP (health check do Render)
+# ------------------------------------------------------------------
+
+async def handle_health(request: web.Request) -> web.Response:
+    return web.Response(text="UnBot está rodando.")
+
+
+async def start_web_server() -> None:
+    """Sobe um servidor HTTP mínimo para o Render detectar a porta aberta."""
+    app = web.Application()
+    app.router.add_get("/", handle_health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"[ok] servidor HTTP de health check escutando na porta {PORT}")
+
+
+# ------------------------------------------------------------------
 # BOT DISCORD
 # ------------------------------------------------------------------
 
@@ -178,7 +202,13 @@ async def checar_vagas_cmd(ctx):
         await ctx.send(embed=embed)
 
 
+async def main() -> None:
+    await start_web_server()
+    async with bot:
+        await bot.start(DISCORD_TOKEN)
+
+
 if __name__ == "__main__":
     if DISCORD_TOKEN == "COLOQUE_SEU_TOKEN_AQUI":
         raise SystemExit("Defina DISCORD_TOKEN (variável de ambiente) antes de rodar.")
-    bot.run(DISCORD_TOKEN)
+    asyncio.run(main())
