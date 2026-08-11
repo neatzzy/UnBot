@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 import aiohttp
+from jobspy import scrape_jobs
 import discord
 from aiohttp import web
 from discord.ext import commands, tasks
@@ -189,6 +190,32 @@ def build_jobboard_entries(rows: list[dict]) -> list[dict]:
             "source": site,
         })
     return entries
+
+
+def fetch_jobboard_jobs() -> list[dict]:
+    """Busca vagas no LinkedIn/Indeed/Glassdoor via jobspy: presencial/híbrido
+    em Brasília + remoto no resto do Brasil, só das últimas
+    JOBBOARD_HOURS_OLD horas. Função síncrona (jobspy é bloqueante) — quem
+    chama deve rodar em thread separada."""
+    common_kwargs = dict(
+        site_name=JOBBOARD_SITES,
+        search_term=JOBBOARD_SEARCH_TERM,
+        country_indeed="brazil",
+        hours_old=JOBBOARD_HOURS_OLD,
+        results_wanted=JOBBOARD_RESULTS_WANTED,
+    )
+    rows = []
+    try:
+        df = scrape_jobs(location=BRASILIA_LOCATION, is_remote=False, **common_kwargs)
+        rows.extend(df.where(df.notna(), None).to_dict("records"))
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas presenciais/híbridas em Brasília: {e}")
+    try:
+        df = scrape_jobs(location="Brazil", is_remote=True, **common_kwargs)
+        rows.extend(df.where(df.notna(), None).to_dict("records"))
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas remotas: {e}")
+    return build_jobboard_entries(rows)
 
 
 # ------------------------------------------------------------------
