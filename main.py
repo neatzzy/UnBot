@@ -52,6 +52,21 @@ TECH_KEYWORDS = [
     "redes de computadores", "scrum", "product design", "ux", "ui designer",
 ]
 
+# Configuração da busca em LinkedIn/Indeed/Glassdoor via jobspy.
+JOBBOARD_SITES = ["linkedin", "indeed", "glassdoor"]
+JOBBOARD_HOURS_OLD = 6
+JOBBOARD_RESULTS_WANTED = 50
+BRASILIA_LOCATION = "Brasília, DF, Brazil"
+JOBBOARD_SEARCH_TERM = "tecnologia"
+
+# Ícone (emoji) mostrado no embed do Discord conforme a origem da vaga.
+PLATFORM_ICONS = {
+    "gupy": "🚀",
+    "linkedin": "💼",
+    "indeed": "🔍",
+    "glassdoor": "🏢",
+}
+
 # Slugs de empresas no Gupy. O slug é o nome que aparece na URL da página de
 # carreiras: https://<slug>.gupy.io  ou  https://portal.gupy.io/empresas/<slug>
 # Descubra o slug de uma empresa acessando a página de vagas dela e olhando a URL.

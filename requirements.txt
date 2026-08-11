@@ -12,3 +12,4 @@ propcache==0.5.2
 python-dotenv==1.2.2
 typing_extensions==4.16.0
 yarl==1.24.5
+python-jobspy==1.1.82
