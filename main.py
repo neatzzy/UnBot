@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 import aiohttp
+from jobspy import scrape_jobs
 import discord
 from aiohttp import web
 from discord.ext import commands, tasks
@@ -51,6 +52,21 @@ TECH_KEYWORDS = [
     "backend", "frontend", "front-end", "back-end", "mobile developer",
     "redes de computadores", "scrum", "product design", "ux", "ui designer",
 ]
+
+# Configuração da busca em LinkedIn/Indeed/Glassdoor via jobspy.
+JOBBOARD_SITES = ["linkedin", "indeed", "glassdoor"]
+JOBBOARD_HOURS_OLD = 6
+JOBBOARD_RESULTS_WANTED = 50
+BRASILIA_LOCATION = "Brasília, DF, Brazil"
+JOBBOARD_SEARCH_TERM = "tecnologia"
+
+# Ícone (emoji) mostrado no embed do Discord conforme a origem da vaga.
+PLATFORM_ICONS = {
+    "gupy": "🚀",
+    "linkedin": "💼",
+    "indeed": "🔍",
+    "glassdoor": "🏢",
+}
 
 # Slugs de empresas no Gupy. O slug é o nome que aparece na URL da página de
 # carreiras: https://<slug>.gupy.io  ou  https://portal.gupy.io/empresas/<slug>
@@ -147,9 +163,72 @@ async def collect_new_jobs(seen: set) -> list[dict]:
                     "url": f"https://{slug}.gupy.io/job/{job_id}",
                     "city": (address.get("city") or "Não informado"),
                     "type": (job.get("type") or ""),
+                    "source": "gupy",
                 })
                 seen.add(job_id)
+
+    try:
+        jobboard_entries = await asyncio.to_thread(fetch_jobboard_jobs)
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas em LinkedIn/Indeed/Glassdoor: {e}")
+        jobboard_entries = []
+    for entry in jobboard_entries:
+        if entry["id"] in seen:
+            continue
+        new_jobs.append(entry)
+        seen.add(entry["id"])
+
     return new_jobs
+
+
+def build_jobboard_entries(rows: list[dict]) -> list[dict]:
+    """Filtra e normaliza linhas vindas do jobspy (LinkedIn/Indeed/Glassdoor)
+    pro mesmo formato de dict que o fluxo do Gupy já produz."""
+    entries = []
+    for row in rows:
+        title = row.get("title") or ""
+        if not matches_keywords(title):
+            continue
+        if not is_tech_job(title, ""):
+            continue
+        site = row.get("site") or "indeed"
+        raw_id = row.get("id") or row.get("job_url") or title
+        entries.append({
+            "id": f"{site}_{raw_id}",
+            "company": row.get("company") or "Não informado",
+            "title": title,
+            "url": row.get("job_url") or "",
+            "city": row.get("location") or "Não informado",
+            "type": "",
+            "source": site,
+        })
+    return entries
+
+
+def fetch_jobboard_jobs() -> list[dict]:
+    """Busca vagas no LinkedIn/Indeed/Glassdoor via jobspy: presencial/híbrido
+    em Brasília + remoto no resto do Brasil, só das últimas
+    JOBBOARD_HOURS_OLD horas. Função síncrona (jobspy é bloqueante) — quem
+    chama deve rodar em thread separada."""
+    common_kwargs = dict(
+        site_name=JOBBOARD_SITES,
+        search_term=JOBBOARD_SEARCH_TERM,
+        country_indeed="brazil",
+        hours_old=JOBBOARD_HOURS_OLD,
+        results_wanted=JOBBOARD_RESULTS_WANTED,
+    )
+    rows = []
+    try:
+        df = scrape_jobs(location=BRASILIA_LOCATION, is_remote=False, **common_kwargs)
+        rows.extend(df.where(df.notna(), None).to_dict("records"))
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas presenciais/híbridas em Brasília: {e}")
+    try:
+        df = scrape_jobs(location="Brazil", is_remote=True, **common_kwargs)
+        rows.extend(df.where(df.notna(), None).to_dict("records"))
+    except Exception as e:
+        print(f"[erro] falha ao buscar vagas remotas: {e}")
+    return build_jobboard_entries(rows)
 
 
 # ------------------------------------------------------------------
@@ -178,6 +257,7 @@ async def start_web_server() -> None:
 intents = discord.Intents.default()
 intents.message_content = True  # necessário para o bot ler o prefixo "!" nas mensagens
 bot = commands.Bot(command_prefix="!", intents=intents)
+job_check_lock = asyncio.Lock()
 
 
 @bot.event
@@ -194,45 +274,56 @@ async def check_jobs_loop():
         print("[erro] CHANNEL_ID inválido ou bot sem acesso ao canal.")
         return
 
-    seen = load_seen_jobs()
-    new_jobs = await collect_new_jobs(seen)
-    save_seen_jobs(seen)
+    async with job_check_lock:
+        seen = load_seen_jobs()
+        new_jobs = await collect_new_jobs(seen)
+        save_seen_jobs(seen)
 
-    for job in new_jobs:
-        embed = discord.Embed(
-            title=job["title"],
-            url=job["url"] or discord.Embed.Empty,
-            description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
-            color=0x2ECC71,
-        )
-        await channel.send(embed=embed)
+        for job in new_jobs:
+            icon = PLATFORM_ICONS.get(job["source"], "")
+            embed = discord.Embed(
+                title=f"{icon} {job['title']}".strip()[:256],
+                url=job["url"] or None,
+                description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
+                color=0x2ECC71,
+            )
+            try:
+                await channel.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"[erro] falha ao postar vaga '{job['title']}': {e}")
 
-    if new_jobs:
-        print(f"[ok] {len(new_jobs)} vaga(s) nova(s) postada(s).")
-    else:
-        print("[ok] nenhuma vaga nova nesta checagem.")
+        if new_jobs:
+            print(f"[ok] {len(new_jobs)} vaga(s) nova(s) postada(s).")
+        else:
+            print("[ok] nenhuma vaga nova nesta checagem.")
 
 
+@commands.cooldown(1, 300, commands.BucketType.guild)
 @bot.command(name="checarvagas")
 async def checar_vagas_cmd(ctx):
     """Comando manual: !checarvagas — força uma checagem imediata."""
     await ctx.send("Checando vagas agora...")
-    seen = load_seen_jobs()
-    new_jobs = await collect_new_jobs(seen)
-    save_seen_jobs(seen)
+    async with job_check_lock:
+        seen = load_seen_jobs()
+        new_jobs = await collect_new_jobs(seen)
+        save_seen_jobs(seen)
 
-    if not new_jobs:
-        await ctx.send("Nenhuma vaga nova encontrada.")
-        return
+        if not new_jobs:
+            await ctx.send("Nenhuma vaga nova encontrada.")
+            return
 
-    for job in new_jobs:
-        embed = discord.Embed(
-            title=job["title"],
-            url=job["url"] or discord.Embed.Empty,
-            description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
-            color=0x2ECC71,
-        )
-        await ctx.send(embed=embed)
+        for job in new_jobs:
+            icon = PLATFORM_ICONS.get(job["source"], "")
+            embed = discord.Embed(
+                title=f"{icon} {job['title']}".strip()[:256],
+                url=job["url"] or None,
+                description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
+                color=0x2ECC71,
+            )
+            try:
+                await ctx.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"[erro] falha ao postar vaga '{job['title']}': {e}")
 
 
 async def main() -> None:
