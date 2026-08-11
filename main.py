@@ -24,7 +24,7 @@ load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "COLOQUE_SEU_TOKEN_AQUI")
 CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "0"))  # ID do canal do Discord
-CHECK_INTERVAL_MINUTES = 30
+CHECK_INTERVAL_MINUTES = 10
 
 # Porta HTTP exigida pelo Render (Web Service) para o health check.
 # O Render injeta a variável PORT automaticamente; 8080 é usado como fallback local.
