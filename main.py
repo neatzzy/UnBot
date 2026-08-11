@@ -274,8 +274,9 @@ async def check_jobs_loop():
     save_seen_jobs(seen)
 
     for job in new_jobs:
+        icon = PLATFORM_ICONS.get(job["source"], "")
         embed = discord.Embed(
-            title=job["title"],
+            title=f"{icon} {job['title']}".strip(),
             url=job["url"] or discord.Embed.Empty,
             description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
             color=0x2ECC71,
@@ -301,8 +302,9 @@ async def checar_vagas_cmd(ctx):
         return
 
     for job in new_jobs:
+        icon = PLATFORM_ICONS.get(job["source"], "")
         embed = discord.Embed(
-            title=job["title"],
+            title=f"{icon} {job['title']}".strip(),
             url=job["url"] or discord.Embed.Empty,
             description=f"**Empresa:** {job['company']}\n**Local:** {job['city']}",
             color=0x2ECC71,
