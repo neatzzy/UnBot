@@ -76,3 +76,15 @@ assert entries[1]["company"] == "Não informado"
 assert entries[1]["city"] == "Não informado"
 
 print("[ok] build_jobboard_entries passou.")
+
+from main import is_in_brasilia
+
+assert is_in_brasilia("Brasília, DF, BR") is True
+assert is_in_brasilia("Brasilia, DF, BR") is True
+assert is_in_brasilia("Valparaíso de Goiás, GO, BR") is False
+assert is_in_brasilia("Águas Lindas de Goiás, GO, BR") is False
+assert is_in_brasilia("São Paulo, SP, BR") is False
+assert is_in_brasilia("") is False
+assert is_in_brasilia(None) is False
+
+print("[ok] is_in_brasilia passou.")

@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import re
+import unicodedata
 from pathlib import Path
 
 import aiohttp
@@ -115,6 +116,16 @@ def is_tech_job(title: str, department: str) -> bool:
     return any(kw in text for kw in TECH_KEYWORDS)
 
 
+def is_in_brasilia(city: str) -> bool:
+    """jobspy filtra por raio (distance=50 milhas por padrão), não por cidade
+    exata, então a busca presencial/híbrido volta com vagas do Entorno
+    (Valparaíso de Goiás, Águas Lindas etc). Filtra aqui pra valer só Brasília."""
+    if not city:
+        return False
+    normalized = unicodedata.normalize("NFKD", city).encode("ascii", "ignore").decode().lower()
+    return "brasilia" in normalized
+
+
 def parse_jobs_from_html(html: str) -> list[dict]:
     """Extrai a lista de vagas embutida no JSON da página Next.js da Gupy."""
     match = NEXT_DATA_RE.search(html)
@@ -220,7 +231,8 @@ def fetch_jobboard_jobs() -> list[dict]:
     rows = []
     try:
         df = scrape_jobs(location=BRASILIA_LOCATION, is_remote=False, **common_kwargs)
-        rows.extend(df.where(df.notna(), None).to_dict("records"))
+        onsite_rows = df.where(df.notna(), None).to_dict("records")
+        rows.extend(r for r in onsite_rows if is_in_brasilia(r.get("location")))
     except Exception as e:
         print(f"[erro] falha ao buscar vagas presenciais/híbridas em Brasília: {e}")
     try:
