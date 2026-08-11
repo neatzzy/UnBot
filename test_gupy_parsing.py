@@ -32,3 +32,47 @@ assert is_tech_job("Estagiário de Marketing", "Marketing") is False
 assert is_tech_job("Estagiário de Desenvolvimento Organizacional", "Gente e Gestão") is False
 
 print("[ok] parse_jobs_from_html e matches_keywords passaram.")
+
+from main import build_jobboard_entries
+
+FAKE_JOBBOARD_ROWS = [
+    {
+        "id": "in-abc123",
+        "site": "indeed",
+        "title": "Estágio de Desenvolvimento Backend",
+        "company": "Empresa X",
+        "location": "Brasília, DF, BR",
+        "job_url": "https://br.indeed.com/viewjob?jk=abc123",
+    },
+    {
+        "id": "li-def456",
+        "site": "linkedin",
+        "title": "Analista de Sistemas Sênior",  # não bate keyword, deve ser descartada
+        "company": "Empresa Y",
+        "location": "São Paulo, SP, BR",
+        "job_url": "https://linkedin.com/jobs/def456",
+    },
+    {
+        "id": "gd-ghi789",
+        "site": "glassdoor",
+        "title": "Desenvolvedor Júnior",
+        "company": None,  # empresa ausente, deve virar "Não informado"
+        "location": None,
+        "job_url": "https://glassdoor.com/job/ghi789",
+    },
+]
+
+entries = build_jobboard_entries(FAKE_JOBBOARD_ROWS)
+assert len(entries) == 2, f"esperava 2 vagas filtradas, veio {len(entries)}"
+
+assert entries[0]["id"] == "indeed_in-abc123"
+assert entries[0]["source"] == "indeed"
+assert entries[0]["company"] == "Empresa X"
+assert entries[0]["city"] == "Brasília, DF, BR"
+assert entries[0]["url"] == "https://br.indeed.com/viewjob?jk=abc123"
+
+assert entries[1]["id"] == "glassdoor_gd-ghi789"
+assert entries[1]["company"] == "Não informado"
+assert entries[1]["city"] == "Não informado"
+
+print("[ok] build_jobboard_entries passou.")

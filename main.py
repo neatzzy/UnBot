@@ -167,6 +167,30 @@ async def collect_new_jobs(seen: set) -> list[dict]:
     return new_jobs
 
 
+def build_jobboard_entries(rows: list[dict]) -> list[dict]:
+    """Filtra e normaliza linhas vindas do jobspy (LinkedIn/Indeed/Glassdoor)
+    pro mesmo formato de dict que o fluxo do Gupy já produz."""
+    entries = []
+    for row in rows:
+        title = row.get("title") or ""
+        if not matches_keywords(title):
+            continue
+        if not is_tech_job(title, ""):
+            continue
+        site = row.get("site") or "indeed"
+        raw_id = row.get("id") or row.get("job_url") or title
+        entries.append({
+            "id": f"{site}_{raw_id}",
+            "company": row.get("company") or "Não informado",
+            "title": title,
+            "url": row.get("job_url") or "",
+            "city": row.get("location") or "Não informado",
+            "type": "",
+            "source": site,
+        })
+    return entries
+
+
 # ------------------------------------------------------------------
 # SERVIDOR HTTP (health check do Render)
 # ------------------------------------------------------------------
